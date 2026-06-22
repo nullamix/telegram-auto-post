@@ -12,8 +12,6 @@ MODELS = [
     "nex-agi/nex-n2-pro:free",
 ]
 
-AI_FOOTER = "\n\n---\n\u0627\u06cc\u0646 \u067e\u0633\u062a \u062a\u0648\u0633\u0637 AI \u0646\u0648\u0634\u062a\u0647 \u0648 \u0627\u0631\u0633\u0627\u0644 \u0634\u062f\u0647 \u0627\u0633\u062a."
-
 client = OpenAI(
     base_url=OPENROUTER_BASE_URL,
     api_key=os.environ["OPENROUTER_API_KEY"],
@@ -56,7 +54,7 @@ def generate_post(topic: str) -> str:
             )
 
             post = response.choices[0].message.content.strip()
-            return post + AI_FOOTER
+            return post
         except Exception as e:
             last_error = e
             continue
