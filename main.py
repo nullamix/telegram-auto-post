@@ -39,6 +39,11 @@ def generate_post(topic: str) -> str:
                             "Do not invent facts, versions, CVEs, release dates, or commands. "
                             "Keep it suitable for Telegram. "
                             "Do not add an AI disclosure footer; the application will add it."
+                            "At the end of the post, add 1 to 3 relevant English hashtags based on the main technology or concept discussed. "
+                            "Examples: #kubernetes for Kubernetes, #python for Python, #docker for Docker, #cicd for CI/CD, #linux for Linux. "
+                            "Hashtags must be lowercase English, concise, and placed before the AI disclosure footer. "
+                            "Do not add unrelated or generic hashtag spam. "
+                            "Do not add the AI disclosure footer; the application will add it."
                         ),
                     },
                     {
