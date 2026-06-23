@@ -1,6 +1,6 @@
 import os
 import requests
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -58,9 +58,10 @@ def generate_post(topic: str) -> str:
                 max_tokens=900,
             )
 
-            post = response.choices[0].message.content.strip()
-            return post
-        except Exception as e:
+            post_content = response.choices[0].message.content
+            if post_content:
+                return post_content.strip()
+        except OpenAIError as e:
             last_error = e
             continue
     raise RuntimeError(f"All OpenRouter models failed. Last error: {last_error}")
