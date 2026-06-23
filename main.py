@@ -1,4 +1,8 @@
+from pathlib import Path
+from string import Template
+import argparse
 import os
+
 import requests
 from openai import OpenAI, OpenAIError
 from dotenv import load_dotenv
@@ -12,13 +16,30 @@ MODELS = [
     "nex-agi/nex-n2-pro:free",
 ]
 
-client = OpenAI(
-    base_url=OPENROUTER_BASE_URL,
-    api_key=os.environ["OPENROUTER_API_KEY"],
-)
+
+def read_text_file(path: Path) -> str:
+    if not path.exists():
+        raise FileNotFoundError(f"Prompt file not found: {path}")
+    return path.read_text(encoding="utf-8").strip()
 
 
-def generate_post(topic: str) -> str:
+def render_prompt(template_text: str, variables: dict[str, str]) -> str:
+    return Template(template_text).safe_substitute(variables)
+
+
+def load_prompt_set(prompt_set: str, variables: dict[str, str]) -> tuple[str, str]:
+    prompt_dir = Path("prompts") / prompt_set
+
+    system_template = read_text_file(prompt_dir / "system.txt")
+    user_template = read_text_file(prompt_dir / "user.txt")
+
+    system_prompt = render_prompt(system_template, variables)
+    user_prompt = render_prompt(user_template, variables)
+
+    return system_prompt, user_prompt
+
+
+def generate_post(client: OpenAI, system_prompt: str, user_prompt: str, temperature: float, max_tokens: int = 900) -> str:
     last_error = None
     for model in MODELS:
         try:
@@ -27,35 +48,15 @@ def generate_post(topic: str) -> str:
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "You write Telegram posts for a DevOps audience. "
-                            "Write the main text in Persian. "
-                            "Keep technical terms in English only when they are standard technical words, "
-                            "for example: Docker, Kubernetes, CI/CD, Pipeline, GitLab, Runner, Cache, "
-                            "Registry, Image, Container, Observability, Monitoring, Logging, Metrics, "
-                            "Deployment, Rollback, SRE, DevSecOps. "
-                            "Do not overuse English. "
-                            "Use a practical, direct, non-hype style. "
-                            "Do not invent facts, versions, CVEs, release dates, or commands. "
-                            "Keep it suitable for Telegram. "
-                            "Do not add an AI disclosure footer; the application will add it."
-                            "At the end of the post, add 1 to 3 relevant English hashtags based on the main technology or concept discussed. "
-                            "Examples: #kubernetes for Kubernetes, #python for Python, #docker for Docker, #cicd for CI/CD, #linux for Linux. "
-                            "Hashtags must be lowercase English, concise, and placed before the AI disclosure footer. "
-                            "Do not add unrelated or generic hashtag spam. "
-                            "Do not add the AI disclosure footer; the application will add it."
-                        ),
+                        "content": system_prompt
                     },
                     {
                         "role": "user",
-                        "content": (
-                            f"Write one useful daily DevOps Telegram post about this topic: {topic}. "
-                            "Structure it with a short hook, one practical explanation, and one actionable takeaway."
-                        ),
+                        "content": user_prompt
                     },
                 ],
-                temperature=0.7,
-                max_tokens=900,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
 
             post_content = response.choices[0].message.content
@@ -83,10 +84,77 @@ def send_telegram(text: str) -> None:
     response.raise_for_status()
 
 
-if __name__ == "__main__":
-    topic = os.getenv(
-        "POST_TOPIC", "A practical DevOps lesson from Docker, CI/CD, Linux, Kubernetes, monitoring, or security"
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--prompt-set",
+        default=os.getenv("PROMPT_SET", "example_daily"),
+        help="Prompt folder name inside prompts/",
     )
 
-    post = generate_post(topic)
+    parser.add_argument(
+        "--audience",
+        default=os.getenv("POST_AUDIENCE", "daily readers interested in something"),
+        help="Target audience",
+    )
+
+    parser.add_argument(
+        "--tone",
+        default=os.getenv("POST_TONE", "direct, practical, concise"),
+        help="Writing tone",
+    )
+
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=float(os.getenv("TEMPERATURE", "0.7")),
+    )
+
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=int(os.getenv("MAX_TOKENS", "900")),
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print post instead of sending to Telegram",
+    )
+
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    variables = {
+        "audience": args.audience,
+        "tone": args.tone,
+    }
+
+    system_prompt, user_prompt = load_prompt_set(args.prompt_set, variables)
+
+    client = OpenAI(
+        base_url=OPENROUTER_BASE_URL,
+        api_key=os.environ["OPENROUTER_API_KEY"],
+    )
+
+    post = generate_post(
+        client=client,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+    )
+
+    if args.dry_run:
+        print(post)
+        return
+
     send_telegram(post)
+
+
+if __name__ == "__main__":
+    main()
